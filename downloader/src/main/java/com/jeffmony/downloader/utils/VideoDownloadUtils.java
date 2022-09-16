@@ -8,6 +8,9 @@ import com.jeffmony.downloader.VideoDownloadConfig;
 import com.jeffmony.downloader.model.MultiRangeInfo;
 import com.jeffmony.downloader.model.Video;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -16,6 +19,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.security.MessageDigest;
 import java.text.DecimalFormat;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -88,9 +94,9 @@ public class VideoDownloadUtils {
     public static boolean isM3U8Mimetype(String mimeType) {
         return !TextUtils.isEmpty(mimeType) &&
                 (mimeType.contains(Video.Mime.MIME_TYPE_M3U8_1) ||
-                mimeType.contains(Video.Mime.MIME_TYPE_M3U8_2) ||
-                mimeType.contains(Video.Mime.MIME_TYPE_M3U8_3) ||
-                mimeType.contains(Video.Mime.MIME_TYPE_M3U8_4));
+                        mimeType.contains(Video.Mime.MIME_TYPE_M3U8_2) ||
+                        mimeType.contains(Video.Mime.MIME_TYPE_M3U8_3) ||
+                        mimeType.contains(Video.Mime.MIME_TYPE_M3U8_4));
     }
 
     public static String computeMD5(String string) {
@@ -184,7 +190,7 @@ public class VideoDownloadUtils {
         LogUtils.i(TAG, "readVideoCacheInfo : dir=" + dir.getAbsolutePath());
         File file = new File(dir, INFO_FILE);
         if (!file.exists()) {
-            LogUtils.i(TAG,"readProxyCacheInfo failed, file not exist.");
+            LogUtils.i(TAG, "readProxyCacheInfo failed, file not exist.");
             return null;
         }
         ObjectInputStream fis = null;
@@ -195,7 +201,7 @@ public class VideoDownloadUtils {
                 return info;
             }
         } catch (Exception e) {
-            LogUtils.w(TAG,"readVideoCacheInfo failed, exception=" + e.getMessage());
+            LogUtils.w(TAG, "readVideoCacheInfo failed, exception=" + e.getMessage());
         } finally {
             close(fis);
         }
@@ -212,10 +218,31 @@ public class VideoDownloadUtils {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            LogUtils.w(TAG,"saveVideoCacheInfo failed, exception=" + e.getMessage());
+            LogUtils.w(TAG, "saveVideoCacheInfo failed, exception=" + e.getMessage());
         } finally {
             close(fos);
         }
+    }
+
+    public static Map<String, String> parseFromString(String requestHeader) {
+        Map<String, String> resultMap = new HashMap<>();
+        if (TextUtils.isEmpty(requestHeader)) {
+            return resultMap;
+        }
+        try {
+            JSONObject jsonObject = new JSONObject(requestHeader);
+            Iterator<String> keys = jsonObject.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                String value = jsonObject.optString(key);
+                resultMap.put(key, value);
+            }
+            return resultMap;
+        } catch (JSONException e) {
+            LogUtils.e(TAG, "parseFromString failed, exception = " + e);
+            return resultMap;
+        }
+
     }
 
 }
