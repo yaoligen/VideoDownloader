@@ -31,6 +31,7 @@ public class HttpUtils {
     public static final int RESPONSE_206 = 206;
 
     public static final int RESPONSE_503 = 503;
+    public static final int RESPONSE_429 = 429;
 
     private static int sRedirectCount = 0;
 

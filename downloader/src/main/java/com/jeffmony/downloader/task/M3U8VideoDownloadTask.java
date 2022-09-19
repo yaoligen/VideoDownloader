@@ -1,6 +1,7 @@
 package com.jeffmony.downloader.task;
 
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.jeffmony.downloader.VideoDownloadException;
 import com.jeffmony.downloader.m3u8.M3U8;
@@ -261,7 +262,7 @@ public class M3U8VideoDownloadTask extends VideoDownloadTask {
                 saveFile(inputStream, file, contentLength, ts, videoUrl);
             } else {
                 mContinuousSuccessTsCount = 0;
-                if (responseCode == HttpUtils.RESPONSE_503) {
+                if (responseCode == HttpUtils.RESPONSE_503 || responseCode == HttpUtils.RESPONSE_429) {
                     if (mM3U8DownloadPoolCount > 1) {
                         mM3U8DownloadPoolCount -= 1;
                         setThreadPoolArgument(mM3U8DownloadPoolCount, mM3U8DownloadPoolCount);
@@ -294,7 +295,7 @@ public class M3U8VideoDownloadTask extends VideoDownloadTask {
                     }
                 }
             } else {
-                LogUtils.w(TAG, "downloadFile failed, exception="+e.getMessage());
+                LogUtils.w(TAG, "downloadFile failed, exception=" + e.getMessage());
                 throw e;
             }
         } finally {
@@ -311,7 +312,7 @@ public class M3U8VideoDownloadTask extends VideoDownloadTask {
             int len;
             byte[] buf = new byte[BUFFER_SIZE];
             while ((len = inputStream.read(buf)) != -1) {
-                totalLength += (long)len;
+                totalLength += (long) len;
                 fos.write(buf, 0, len);
             }
             if (contentLength > 0 && contentLength == totalLength) {
@@ -376,7 +377,7 @@ public class M3U8VideoDownloadTask extends VideoDownloadTask {
                     if (m3u8Ts.getSegmentByteRange() != null) {
                         initSegmentInfo = "URI=\"" + initSegmentFilePath + "\"" + ",BYTERANGE=\"" + m3u8Ts.getSegmentByteRange() + "\"";
                     } else {
-                        initSegmentInfo = "URI=\"" + initSegmentFilePath  + "\"";
+                        initSegmentInfo = "URI=\"" + initSegmentFilePath + "\"";
                     }
                     bfw.write(M3U8Constants.TAG_INIT_SEGMENT + ":" + initSegmentInfo + "\n");
                 }
