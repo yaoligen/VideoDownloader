@@ -12,6 +12,9 @@ public class M3U8 {
     private int mVersion = 3;
     private boolean mHasEndList;
 
+    private String encryptionKeyUrl;
+    private String encryptionIVStr;
+
     public M3U8() {
         this("");
     }
@@ -70,6 +73,23 @@ public class M3U8 {
         return duration;
     }
 
+    public String getEncryptionKeyUrl() {
+        return encryptionKeyUrl;
+    }
+
+    public void setEncryptionKeyUrl(String encryptionKeyUrl) {
+        this.encryptionKeyUrl = encryptionKeyUrl;
+    }
+
+    public String getEncryptionIVStr() {
+        return encryptionIVStr;
+    }
+
+    public void setEncryptionIVStr(String encryptionIVStr) {
+        this.encryptionIVStr = encryptionIVStr;
+    }
+
+
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof M3U8) {
@@ -79,4 +99,5 @@ public class M3U8 {
         }
         return false;
     }
+
 }

@@ -40,7 +40,7 @@ public class M3U8Constants {
             METHOD_SAMPLE_AES + "|" + METHOD_SAMPLE_AES_CENC + "|" + METHOD_SAMPLE_AES_CTR + ")" + "\\s*(,|$)");
     public static final Pattern REGEX_KEYFORMAT = Pattern.compile("KEYFORMAT=\"(.+?)\"");
     public static final Pattern REGEX_URI = Pattern.compile("URI=\"(.+?)\"");
-    public static final Pattern REGEX_IV = Pattern.compile("IV=([^,.*]+)");
+    public static final Pattern REGEX_IV = Pattern.compile("IV=(?:0x)?([^,.*]{16}).*");
     public static final String KEYFORMAT_IDENTITY = "identity";
     public static final Pattern REGEX_ATTR_BYTERANGE = Pattern.compile("BYTERANGE=\"(\\d+(?:@\\d+)?)\\b\"");
 }

@@ -8,17 +8,23 @@ import com.jeffmony.downloader.utils.VideoDownloadUtils;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 public class M3U8Utils {
 
@@ -36,9 +42,11 @@ public class M3U8Utils {
         try {
             HttpURLConnection connection = HttpUtils.getConnection(videoUrl, headers, VideoDownloadUtils.getDownloadConfig().shouldIgnoreCertErrors());
             int responseCode = connection.getResponseCode();
-            LogUtils.i(TAG, "parseNetworkM3U8Info responseCode="+responseCode);
-            if (responseCode == HttpUtils.RESPONSE_503 && retryCount < HttpUtils.MAX_RETRY_COUNT) {
-                return parseNetworkM3U8Info(videoUrl, headers, retryCount+1);
+            LogUtils.i(TAG, "parseNetworkM3U8Info responseCode=" + responseCode);
+            if ((responseCode == HttpUtils.RESPONSE_503
+                    || responseCode == HttpUtils.RESPONSE_429)
+                    && retryCount < HttpUtils.MAX_RETRY_COUNT) {
+                return parseNetworkM3U8Info(videoUrl, headers, retryCount + 1);
             }
             bufferedReader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
             M3U8 m3u8 = new M3U8(videoUrl);
@@ -95,14 +103,20 @@ public class M3U8Utils {
                         hasKey = true;
                         method = parseOptionalStringAttr(line, M3U8Constants.REGEX_METHOD);
                         String keyFormat = parseOptionalStringAttr(line, M3U8Constants.REGEX_KEYFORMAT);
+                        LogUtils.d(TAG, "parseNetworkM3U8Info: keyFormat: " + keyFormat + ". tsUrl: " + videoUrl);
                         if (!M3U8Constants.METHOD_NONE.equals(method)) {
+                            LogUtils.d(TAG, "parseNetworkM3U8Info: line: " + line);
                             encryptionIV = parseOptionalStringAttr(line, M3U8Constants.REGEX_IV);
+                            LogUtils.d(TAG, "parseNetworkM3U8Info: encryptionIV(after) : " + encryptionIV);
                             if (M3U8Constants.KEYFORMAT_IDENTITY.equals(keyFormat) || keyFormat == null) {
                                 if (M3U8Constants.METHOD_AES_128.equals(method)) {
                                     // The segment is fully encrypted using an identity key.
                                     String tempKeyUri = parseStringAttr(line, M3U8Constants.REGEX_URI);
+                                    m3u8.setEncryptionIVStr(encryptionIV);
+                                    LogUtils.d(TAG, "parseNetworkM3U8Info: tempKeyUri : " + tempKeyUri);
                                     if (tempKeyUri != null) {
                                         encryptionKeyUri = getM3U8AbsoluteUrl(videoUrl, tempKeyUri);
+                                        m3u8.setEncryptionKeyUrl(encryptionKeyUri);
                                     }
                                 } else {
                                     // Do nothing. Samples are encrypted using an identity key,
@@ -133,6 +147,7 @@ public class M3U8Utils {
                 M3U8Seg ts = new M3U8Seg();
                 ts.initTsAttributes(getM3U8AbsoluteUrl(videoUrl, line), tsDuration, tsIndex, sequence++, hasDiscontinuity);
                 if (hasKey) {
+                    LogUtils.d(TAG, "method: " + method + ". encryptionKeyUri: " + encryptionKeyUri + ". encryptionIV:" + encryptionIV);
                     ts.setKeyConfig(method, encryptionKeyUri, encryptionIV);
                 }
                 if (hasInitSegment) {
@@ -304,7 +319,7 @@ public class M3U8Utils {
                 if (m3u8Ts.getSegmentByteRange() != null) {
                     initSegmentInfo = "URI=\"" + m3u8Ts.getInitSegmentUri() + "\"" + ",BYTERANGE=\"" + m3u8Ts.getSegmentByteRange() + "\"";
                 } else {
-                    initSegmentInfo = "URI=\"" + m3u8Ts.getInitSegmentUri()  + "\"";
+                    initSegmentInfo = "URI=\"" + m3u8Ts.getInitSegmentUri() + "\"";
                 }
                 bfw.write(M3U8Constants.TAG_INIT_SEGMENT + ":" + initSegmentInfo + "\n");
             }
@@ -314,19 +329,19 @@ public class M3U8Utils {
                     if (m3u8Ts.getKeyUri() != null) {
                         String keyUri = m3u8Ts.getKeyUri();
                         key += ",URI=\"" + keyUri + "\"";
-                        URL keyURL = new URL(keyUri);
-                        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(keyURL.openStream()));
-                        StringBuilder textBuilder = new StringBuilder();
-                        String line;
-                        while ((line = bufferedReader.readLine()) != null) {
-                            textBuilder.append(line);
+                        Object keyContent = getContentFromUrl(keyUri, null, 1);
+                        if (!(keyContent instanceof InputStream)) {
+                            return;
                         }
-                        boolean isMessyStr = VideoDownloadUtils.isMessyCode(textBuilder.toString());
-                        m3u8Ts.setIsMessyKey(isMessyStr);
                         File keyFile = new File(dir, m3u8Ts.getLocalKeyUri());
                         FileOutputStream outputStream = new FileOutputStream(keyFile);
-                        outputStream.write(textBuilder.toString().getBytes());
-                        bufferedReader.close();
+                        InputStream inputStream = (InputStream) keyContent;
+                        ByteArrayOutputStream output = new ByteArrayOutputStream();
+                        byte[] raw = toByteArray((InputStream) keyContent);
+                        output.write(raw, 0, raw.length);
+                        byte[] bytes = output.toByteArray();
+                        outputStream.write(bytes, 0, bytes.length);// 写入数据
+                        inputStream.close();
                         outputStream.close();
                         if (m3u8Ts.getKeyIV() != null) {
                             key += ",IV=" + m3u8Ts.getKeyIV();
@@ -485,5 +500,55 @@ public class M3U8Utils {
         }
         return str1.substring(0, j);
     }
-}
 
+    public static byte[] getContentFromUrl(String url, Map<String, String> headers, int retryCount) {
+        HttpURLConnection connection = null;
+        try {
+            connection = HttpUtils.getConnection(url, headers, VideoDownloadUtils.getDownloadConfig().shouldIgnoreCertErrors());
+            int responseCode = connection.getResponseCode();
+            LogUtils.i(TAG, "getContentFromUrl responseCode=" + responseCode);
+            if (responseCode == HttpUtils.RESPONSE_503
+                    || responseCode == HttpUtils.RESPONSE_429
+                    && retryCount < HttpUtils.MAX_RETRY_COUNT) {
+                return getContentFromUrl(url, headers, retryCount + 1);
+            }
+            InputStream inputStream = connection.getInputStream();
+            return toByteArray(inputStream);
+        } catch (IOException e) {
+            LogUtils.e(TAG, "getContentFromUrl failed. Exception: " + e);
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    public static byte[] toByteArray(InputStream input) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[4096];
+        int n;
+        while (-1 != (n = input.read(buffer))) {
+            output.write(buffer, 0, n);
+        }
+        return output.toByteArray();
+    }
+
+    public static byte[] decrypt(byte[] contentBytes, String keyIV, byte[] keyBytes) {
+        try {
+            SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            IvParameterSpec ips = new IvParameterSpec(keyIV.getBytes());
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ips);
+            try {
+                return cipher.doFinal(contentBytes);
+            } catch (Exception e) {
+                LogUtils.e(TAG, e.toString());
+                return null;
+            }
+        } catch (Exception ex) {
+            LogUtils.e(TAG, ex.toString());
+            return null;
+        }
+    }
+}
